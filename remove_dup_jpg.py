@@ -16,69 +16,88 @@ import tkinter as tk
 from tkinter import filedialog
 from tkinter import messagebox
 from tkinter import ttk
+from typing import List
 # from ttkbootstrap import Style
 
 
-# 用于计算文件的MD5值
-def calculate_md5(filepath: Path) -> str:
-    hash_md5 = hashlib.md5()
-    with filepath.open("rb") as f:
-        for chunk in iter(lambda: f.read(4096), b""):
-            hash_md5.update(chunk)
-    return hash_md5.hexdigest()
+class ImageDedup(object):
+    def __init__(self, inputdir: Path, outputdir: Path, imagesFormatList: List[str]):
+        self.inputdir = inputdir
+        self.outputdir = outputdir
+        self.imagesFormatList = imagesFormatList
 
+    @staticmethod
+    def calculate_md5(filepath: Path) -> str:
+        """
+        # 用于计算文件的MD5值
+        :return:
+        """
+        hash_md5 = hashlib.md5()
+        with filepath.open("rb") as f:
+            for chunk in iter(lambda: f.read(4096), b""):
+                hash_md5.update(chunk)
+        return hash_md5.hexdigest()
 
-# 遍历当前目录及子目录下的所有.jpg文件，并计算MD5值
-def traverse_and_calculate_md5(inputdir: Path) -> list[str]:
-    md5_values = []
-    for filepath in inputdir.rglob('*.jpg'):
-        if any(part == 'need_remove' for part in filepath.parts):
-            continue  # 跳过当前循环迭代
-        md5_value = calculate_md5(filepath)
-        md5_values.append(f"{md5_value}\t{filepath}")
-    return md5_values
+    def traverse_and_calculate_md5(self) -> list[str]:
+        """
+        # 遍历当前目录及子目录下的所有.jpg文件，并计算MD5值
+        :param inputdir:
+        :return:
+        """
+        md5_values = []
+        # for filepath in inputdir.rglob('*.jpg'):
+        allfiles = ImageDedup.find_files_with_extensions(self.inputdir, self.imagesFormatList)
+        for filepath in allfiles:
+            md5_value = ImageDedup.calculate_md5(filepath)
+            md5_values.append(f"{md5_value}\t{filepath}")
+        # print(md5_values)
+        return md5_values
 
+    @staticmethod
+    def find_files_with_extensions(directory: Path, extensions):
+        all_files = []
+        for ext in extensions:
+            all_files.extend(directory.rglob(f'*{ext}'))
+        return all_files
 
-# 保存MD5值到md5.txt文件
-def save_md5_values(infile, md5_values: list[str]) -> None:
-    with open(infile, "w") as f:
-        for v in md5_values:
-            f.write(v + "\n")
+    @staticmethod
+    def save_md5_values(infile: Path, md5_values: list[str]) -> None:
+        """
+        保存MD5值到md5.txt文件s
+        :param md5_values:
+        :return:
+        """
+        with open(infile, "w") as f:
+            for v in md5_values:
+                f.write(v + "\n")
 
-def remove_dup_jpg(inputdir, outputdir):
-    # 计算当前路径下的 .jpg 的 md5
-    # root_dir = Path(".")  # 当前目录
-    md5_values = traverse_and_calculate_md5(inputdir)
-    save_md5_values(outputdir / "md5.txt", md5_values)
+    def remove_dup_jpg(self):
+        # 计算当前路径下的 .jpg 的 md5
+        # root_dir = Path(".")  # 当前目录
+        md5_values = ImageDedup.traverse_and_calculate_md5(self)
+        ImageDedup.save_md5_values(self.outputdir / "md5.txt", md5_values)
 
-    # infile = "md5.txt"
-    # df = pd.DataFrame(pd.read_csv(infile, encoding='utf-8', sep='\t', names=["md5", "filepath"]))
-    # df.sort_values(by="md5")
-    # print(df)
-    # df.to_csv("md5.remove_dup.txt", encoding='utf-8', sep='\t', index=False)
-    res = dict()
-    for num, md5_str in enumerate(md5_values):
-        md5_value, filepath = md5_str.split("\t")
-        filepath = Path(filepath)
-        if md5_value in res:
-            # 目标文件夹路径
-            # folder_path = Path('need_remove')
-            # 如果文件夹不存在，则创建它
-            # if not folder_path.exists():
-            #     folder_path.mkdir(parents=True, exist_ok=True)
+        res = dict()
+        for num, md5_str in enumerate(md5_values):
+            md5_value, filepath = md5_str.split("\t")
+            filepath = Path(filepath)
+            if md5_value in res:
+                # 目标文件夹路径
+                # folder_path = Path('need_remove')
+                # 如果文件夹不存在，则创建它
+                # if not folder_path.exists():
+                #     folder_path.mkdir(parents=True, exist_ok=True)
+                # 目标文件路径
+                dst = self.outputdir / filepath.name
 
-            folder_path = outputdir
-            # 目标文件路径
-            dst = folder_path / filepath.name
-
-            # 如果目标文件已存在，则改名
-            if dst.exists():
-                # dst.unlink() # 删除
-                # 改名
-                dst = dst.with_name(f"{dst.name}_{num}").with_suffix('.jpg')
-            shutil.move(filepath, dst)
-        else:
-            res[md5_value] = 1
+                # 如果目标文件已存在，则改名
+                if dst.exists():
+                    # dst.unlink() # 删除
+                    # 改名
+                    dst = dst.with_name(f"{dst.name}_{num}").with_suffix('.jpg')
+                shutil.move(filepath, dst)
+            else:
+                res[md5_value] = 1
 
 
 
@@ -88,7 +107,7 @@ class Application(tk.Tk):
     """
     def __init__(self):
         super().__init__()
-        self.title('biolxy v0.03 | 图片去重工具')
+        self.title('biolxy v0.04 | 图片去重工具')
         # self.style = Style('darkly')
         self.form = EntryForm(self)
         self.form.pack(fill='both', expand='yes')
@@ -104,6 +123,13 @@ class EntryForm(ttk.Frame):
         # form headers
         ttk.Label(self, text='请选择输入输出的文件夹路径(请做好备份)：\n本程序会将源文件夹中重复的jpg文件移动到冗余文件夹中', width=60).grid(columnspan=3, pady=10)
         # ttk.Labelframe(bootstyle="info")
+
+        # 图片后缀名列表
+        self.image_extensions = ['.jpg', '.png', '.gif', '.bmp', '.tif']
+        self.extension_vars = {}
+
+        # 创建复选框
+        self.create_checkbuttons()
 
         # 创建选择输入文件夹按钮
         self.input_btn = ttk.Button(self, text="源文件夹", command=self.select_input_folder)
@@ -130,19 +156,44 @@ class EntryForm(ttk.Frame):
         self.cancel = ttk.Button(self, text='取消/退出', style='danger.TButton', command=self.quit)
         self.cancel.grid(row=3, column=1, sticky='ew')
 
+    def create_checkbuttons(self):
+        frame = tk.Frame()
+        frame.pack(pady=10)
+
+        for ext in self.image_extensions:
+            var = tk.BooleanVar()
+            chk = tk.Checkbutton(frame, text=ext, variable=var)
+            chk.pack(side=tk.LEFT, padx=10)
+            self.extension_vars[ext] = var
+
     def print_form_data(self):
         print(self.input.get(), self.output.get())
 
+
+    def check_select_images_format(self):
+        selected_extensions = [ext for ext, var in self.extension_vars.items() if var.get()]
+        if not selected_extensions:
+            messagebox.showwarning("Warning", "至少选择一种图片格式")
+            # # 禁用按钮
+            # self.submit.config(state=tk.DISABLED)
+            return False
+        else:
+            print(f"Selected extensions: {selected_extensions}")
+            return True
+
     def run_dedup(self):
-        if(self.confirm_selection()):
-            remove_dup_jpg(Path(self.input_folder), Path(self.output_folder))
-            self.show_finished_window()
+        selected_extensions = [ext for ext, var in self.extension_vars.items() if var.get()]
+        if(self.check_select_images_format()):
+            if(self.confirm_selection()):
+                deduper = ImageDedup(Path(self.input_folder), Path(self.output_folder), selected_extensions)
+                deduper.remove_dup_jpg()
+                self.show_finished_window()
 
     def show_finished_window(self):
         self.finished_window = tk.Toplevel(self)
         self.finished_window.title("执行状态")
         # 先设置窗口大小
-        self.finished_window.geometry("150x100")
+        # self.finished_window.geometry("150x100")
         # 然后立即居中窗口
         self.center_window(self.finished_window)
         self.status_label = tk.Label(self.finished_window, text="运行结束\n窗口将在3秒后关闭")
